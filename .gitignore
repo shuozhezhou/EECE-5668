@@ -1,0 +1,28 @@
+# Market data snapshots come from Yahoo Finance and are not redistributed here.
+# Rebuild one with code/data/collect_snapshot.py, or use the shared Google Drive copy.
+code/data/snapshots/
+code/data/collect_log*.txt
+
+# Course documents (contain team contact details)
+proposal/
+*.pdf
+
+# Upload bundles and scratch files
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Experiment outputs live on Google Drive
+results/
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
