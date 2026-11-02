@@ -39,6 +39,9 @@ for p in [DRIVE / 'data' / 'snapshots', RESULTS, DRIVE / 'logs']:
     p.mkdir(parents=True, exist_ok=True)
 print(sorted(os.listdir(DRIVE)))"""),
     ("code", """# 2. Latest code from GitHub
+import shutil
+if REPO.exists() and not (REPO / '.git').exists():
+    shutil.rmtree(REPO)  # left over from running cell 3 first; clone fresh
 if (REPO / '.git').exists():
     !git -C {REPO} pull --ff-only
 else:
