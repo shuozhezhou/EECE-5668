@@ -30,6 +30,10 @@ Team: Shuozhe Zhou, Yifan Zhu, Weibo Jiang (Northeastern University).
 | [`code/questions/`](code/questions) | Question generator and the generated benchmark |
 | [`code/tests/`](code/tests) | Independent re-derivation of every gold answer |
 
+| [`code/agent/`](code/agent) `runner.py` | The agent loop (conditions C0–C2) |
+| [`code/eval/`](code/eval) | Metrics and summary tables |
+| [`colab/run_experiments.ipynb`](colab/run_experiments.ipynb) | Runs everything on a Colab GPU ([open in Colab](https://colab.research.google.com/github/shuozhezhou/EECE-5668/blob/main/colab/run_experiments.ipynb)) |
+
 See [`code/README.md`](code/README.md) for details.
 
 ## Data

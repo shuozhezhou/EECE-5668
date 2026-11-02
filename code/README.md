@@ -13,13 +13,40 @@ Everything runs against a frozen snapshot, so results are reproducible.
 | `questions/generate.py` | Template-based question generator with programmatic ground truth |
 | `questions/questions_v1.jsonl` | The generated benchmark (200 questions) and `questions_v1.meta.json` |
 | `tests/check_questions.py` | Re-derives every gold answer from the raw tables, independent of `agent/` |
+| `agent/runner.py` | Agent loop for conditions C0 (no tools), C1 (data tools), C2 (+ `python_exec`) |
+| `agent/answers.py` | Final-answer parsing, grading, and number extraction for grounding |
+| `eval/metrics.py` | Per-episode metrics: accuracy, abstention, tool skip, data coverage, grounding |
+| `eval/summarize.py` | Scores every trace under a results directory into tables |
+| `run_experiment.py` | Runs one model over the benchmark against an OpenAI-compatible server (vLLM) |
+| `tests/test_pipeline.py` | Offline end-to-end test with scripted fake models (no GPU needed) |
+| `tools_dev/make_notebook.py` | Builds `colab/run_experiments.ipynb` |
 
 ## Quick start (run from this directory)
 
 ```bash
 py -m questions.generate          # Windows; use `python` on Colab/Linux
 py tests/check_questions.py
+py tests/test_pipeline.py
 ```
+
+Experiments run on Colab via [`colab/run_experiments.ipynb`](../colab/run_experiments.ipynb):
+it starts `vllm serve <model> --enable-auto-tool-choice --tool-call-parser hermes`, then calls
+
+```bash
+python run_experiment.py --model Qwen/Qwen2.5-7B-Instruct --conditions C0 C1 C2 --out-dir <results>
+python -m eval.summarize --results <results>
+```
+
+## Metrics (per model × condition)
+
+| Metric | Meaning |
+|---|---|
+| Accuracy | Answer matches gold within tolerance (T1–T3); correct abstention (T5) |
+| Abstain on answerable | Refused a question that had an answer (over-refusal) |
+| Tool skip | Gave a concrete answer without any successful data-tool call |
+| Coverage | Share of the required (ticker, date) data that the agent actually retrieved |
+| Grounding (strict) | Share of numbers in the reply that appear in a tool output (or in the question) |
+| Grounding | Same, but also counting correct numbers the model derived itself (e.g. mental arithmetic) |
 
 ## Tools
 
