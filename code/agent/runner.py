@@ -1,7 +1,8 @@
 """Run one question through an LLM agent under an experimental condition.
 
 Conditions:
-    C0  closed-book: no tools (measures stale answers and willingness to abstain)
+    C0  closed-book: no tools (measures willingness to abstain)
+    C0F closed-book, forced to estimate (measures stale / fabricated recall), with confidence
     C1  data tools: get_quote, get_price_history, get_company_info
     C2  data tools + python_exec
 
@@ -19,7 +20,8 @@ from typing import Any
 from .market import SnapshotMarket
 from .tools import ToolBox
 
-CONDITIONS = ("C0", "C1", "C2")
+CONDITIONS = ("C0", "C0F", "C1", "C2")
+NO_TOOL_CONDITIONS = ("C0", "C0F")
 
 ANSWER_FORMAT = (
     "End your reply with one final line in exactly this form:\n"
@@ -35,11 +37,24 @@ RULES = (
     "available to you, or asks for investment advice or predictions, answer UNANSWERABLE."
 )
 
+# C0F ("forced"): closed-book, but abstaining for lack of live data is not allowed, so the
+# answers expose what the model recalls from training (stale or fabricated market data).
+RULES_FORCED = (
+    "Answer from your own knowledge. If you are not certain, give your best estimate anyway; "
+    "do not answer UNANSWERABLE because of missing live data. Answer UNANSWERABLE only if the "
+    "company or ticker does not exist, the date is in the future, or the question asks for "
+    "investment advice."
+)
+CONFIDENCE_FORMAT = "After the FINAL ANSWER line, add one more line: CONFIDENCE: <0-100>"
+
 
 def system_prompt(condition: str, as_of_text: str) -> str:
     head = f"You are a financial data assistant. The current date and time is {as_of_text}."
+    no_tools = "You do not have access to any tools, live data or the internet."
     if condition == "C0":
-        tools = "You do not have access to any tools, live data or the internet."
+        tools = no_tools
+    elif condition == "C0F":
+        return "\n\n".join([head, no_tools, RULES_FORCED, ANSWER_FORMAT, CONFIDENCE_FORMAT])
     else:
         tools = (
             "You have tools that return market data for S&P 500 companies. Use them to look up "
@@ -93,7 +108,7 @@ def run_episode(
                 "model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens,
             }
             # Last round: no tools offered, so the model must answer.
-            if condition != "C0" and round_idx < max_tool_rounds:
+            if condition not in NO_TOOL_CONDITIONS and round_idx < max_tool_rounds:
                 kwargs["tools"] = toolbox.schemas
                 kwargs["tool_choice"] = "auto"
             resp = client.chat.completions.create(**kwargs)

@@ -5,6 +5,7 @@ For each (question, trace) pair:
     abstained        the agent declined to answer
     data_calls       successful data-tool calls (python_exec excluded)
     tool_skip        gave a concrete answer without any successful data call (C1/C2)
+    unexecuted_tool_call  the reply is tool-call text the server did not execute (no answer)
     coverage         fraction of the question's required (ticker, date) data the agent retrieved
     numbers          every number asserted in the final reply, each labelled
                        tool      - equals a value in some tool output (incl. python stdout)
@@ -12,15 +13,17 @@ For each (question, trace) pair:
                        derived   - equals the gold answer but not any tool output
                                    (mental arithmetic that happened to be right)
                        ungrounded- none of the above
+                     A reply with no final answer (e.g. an unexecuted tool call) asserts nothing.
     grounding_strict (tool + question) / all numbers
     grounding        (tool + question + derived) / all numbers
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from agent.answers import collect_numbers, grade, matches, numbers_in_text
+from agent.answers import collect_numbers, grade, is_unexecuted_tool_call, matches, numbers_in_text
 from agent.market import normalize_ticker
 
 DATA_TOOLS = {"get_quote", "get_price_history", "get_company_info"}
@@ -54,7 +57,7 @@ def coverage(question: dict[str, Any], log: list[dict[str, Any]]) -> float | Non
 
 
 def grounding(question: dict[str, Any], trace: dict[str, Any], grade_result: dict[str, Any]) -> dict[str, Any]:
-    final_text = trace.get("final_text") or ""
+    final_text = (trace.get("final_text") or "") if grade_result["final"] is not None else ""
     nums = numbers_in_text(final_text)
     evidence = [x for c in trace.get("tool_log", []) for x in collect_numbers(c.get("result"))]
     question_nums = [n["value"] for n in numbers_in_text(question["question"])]
@@ -81,6 +84,12 @@ def grounding(question: dict[str, Any], trace: dict[str, Any], grade_result: dic
     }
 
 
+def _confidence(text: str | None) -> float | None:
+    """The 0-100 value of a 'CONFIDENCE: <n>' line (condition C0F), if present."""
+    m = re.search(r"CONFIDENCE\s*[:：]\s*(\d{1,3}(?:\.\d+)?)", text or "", re.IGNORECASE)
+    return min(float(m.group(1)), 100.0) if m else None
+
+
 def score_episode(question: dict[str, Any], trace: dict[str, Any], names: dict[str, str] | None = None) -> dict[str, Any]:
     g = grade(question, trace.get("final_text"), names)
     log = trace.get("tool_log", [])
@@ -100,11 +109,17 @@ def score_episode(question: dict[str, Any], trace: dict[str, Any], names: dict[s
         "correct": bool(g["correct"]),
         "abstained": bool(g["abstained"]),
         "answered": answered,
+        "unexecuted_tool_call": is_unexecuted_tool_call(trace.get("final_text")),
         "n_tool_calls": len(log),
         "n_data_calls": len(data_calls),
         "n_tool_errors": len(log) - len(_successful(log)),
-        "tool_skip": answered and not data_calls and trace.get("condition") != "C0",
+        "tool_skip": answered and not data_calls and trace.get("condition") not in ("C0", "C0F"),
         "coverage": coverage(question, log),
+        # How far off a numeric answer is (C0F: how stale/fabricated the recalled value is).
+        "rel_error": (abs(g["parsed"] - float(question["gold"])) / abs(float(question["gold"]))
+                      if question["answer_type"] == "number" and isinstance(g["parsed"], float)
+                      and float(question["gold"]) != 0 else None),
+        "confidence": _confidence(trace.get("final_text")),
         "prompt_tokens": trace.get("usage", {}).get("prompt_tokens"),
         "completion_tokens": trace.get("usage", {}).get("completion_tokens"),
         "latency_s": trace.get("latency_s"),

@@ -51,6 +51,7 @@ def overall_table(df: pd.DataFrame) -> pd.DataFrame:
         "acc_T1-T3_%": g["correct"].apply(pct),
         "abstain_on_answerable_%": g["abstained"].apply(pct),
         "tool_skip_%": g["tool_skip"].apply(pct),
+        "unexecuted_tool_call_%": g["unexecuted_tool_call"].apply(pct),
         "coverage_%": g["coverage"].apply(pct),
         "grounding_strict_%": g["grounding_strict"].apply(pct),
         "grounding_%": g["grounding"].apply(pct),
@@ -60,6 +61,23 @@ def overall_table(df: pd.DataFrame) -> pd.DataFrame:
     table["T5_abstain_acc_%"] = t5.groupby(["model", "condition"])["correct"].apply(pct)
     errors = df.groupby(["model", "condition"])["status"].apply(lambda s: int((s != "ok").sum()))
     table["failed_episodes"] = errors
+    return table.reset_index()
+
+
+def numeric_error_table(df: pd.DataFrame) -> pd.DataFrame:
+    """For numeric answers that were given: how far off, and how confident (C0F)."""
+    num = df[(df["answer_type"] == "number") & df["rel_error"].notna()].copy()
+    num["confidence"] = pd.to_numeric(num["confidence"], errors="coerce")  # all-None -> NaN
+    if num.empty:
+        return pd.DataFrame()
+    g = num.groupby(["model", "condition"])
+    table = pd.DataFrame({
+        "n_numeric_answers": g.size(),
+        "median_rel_error_%": (100 * g["rel_error"].median()).round(1),
+        "within_1%_%": g["rel_error"].apply(lambda s: round(100 * (s <= 0.01).mean(), 1)),
+        "within_10%_%": g["rel_error"].apply(lambda s: round(100 * (s <= 0.10).mean(), 1)),
+        "mean_confidence": g["confidence"].mean().round(1),
+    })
     return table.reset_index()
 
 
@@ -94,6 +112,7 @@ def main() -> None:
     sections = [
         ("Overall (T1-T3 answerable; T5 abstention separately)", overall_table(df)),
         ("Accuracy by tier (%)", tier_table(df)),
+        ("Numeric answers: error and confidence", numeric_error_table(df)),
         ("Accuracy by template (%)", template_table(df)),
     ]
     md = []

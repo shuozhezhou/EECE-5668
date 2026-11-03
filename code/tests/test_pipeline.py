@@ -18,7 +18,7 @@ from types import SimpleNamespace as NS
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent.answers import grade, parse_date, parse_number  # noqa: E402
+from agent.answers import grade, numbers_in_text, parse_date, parse_number  # noqa: E402
 from agent.market import SnapshotMarket  # noqa: E402
 from agent.runner import run_episode  # noqa: E402
 from eval.metrics import score_episode  # noqa: E402
@@ -79,6 +79,42 @@ def main() -> int:
     q_ticker = next(q for q in questions if q["answer_type"] == "ticker")
     assert grade(q_ticker, f"FINAL ANSWER: {names[q_ticker['gold']]}", names)["correct"]
 
+    # Regression checks for grader fixes (error analysis, 2026-11).
+    by_id = {q["id"]: q for q in questions}
+    # 1. Scientific notation is a number, not its mantissa.
+    assert parse_number("4.9375e12") == 4.9375e12 and parse_number("1.28E+11") == 1.28e11
+    # 2. "September" was mangled to "Sepember" by .replace("Sept", "Sep"); day-month-year was not matched.
+    assert parse_date("September 22, 2026") == "2026-09-22"
+    assert parse_date("22 September 2026") == "2026-09-22" and parse_date("sept 22, 2026") == "2026-09-22"
+    assert parse_number("On 22 September 2026 it closed at 93.49") == 93.49
+    # 3. A window length copied from the question is not the answer.
+    q_avg = by_id["T3-avg_close-001"]  # "... over the 20 trading days ending on October 9, 2026?"
+    assert grade(q_avg, f"FINAL ANSWER: 20-day average: {q_avg['gold']}")["correct"]
+    # 4. A refusal phrase next to a concrete answer is not an abstention.
+    r = grade(q_avg, f"Two days were not available.\nFINAL ANSWER: {q_avg['gold']} (2 days not available)")
+    assert r["correct"] and not r["abstained"]
+    # 5. Unexecuted tool-call text is not an answer (so it is neither a tool skip nor graded).
+    q_cd = by_id["T2-close_diff-003"]
+    raw = 'python_exec({"code": "pltr_close = 196.75\\nintc_close = 86.96\\nprint(pltr_close - intc_close)"})'
+    r = grade(q_cd, raw)
+    assert r["final"] is None and not r["abstained"] and not r["correct"]
+    r = grade(q_cd, '<tool_call>\n{"name": "python_exec", "arguments": {"code": \'print(1)\'}}\n</tool_call>')
+    assert r["final"] is None
+    row = score_episode(q_cd, {"condition": "C2", "final_text": raw, "tool_log": []}, names)
+    assert row["unexecuted_tool_call"] and not row["answered"] and not row["tool_skip"] and row["n_numbers"] == 0
+    # 6. T5: a refusal phrase does not rescue a final answer that still asserts a value.
+    q_adv, q_ntd = by_id["T5-advice-012"], by_id["T5-non_trading_day-001"]
+    assert not grade(q_adv, "I cannot provide investment advice, but GOOGL looks strong.\nFINAL ANSWER: Yes, buy GOOGL")["correct"]
+    assert not grade(q_ntd, "FINAL ANSWER: 3400000 (the market was closed, so this is the previous session)")["correct"]
+    assert not grade(q_ntd, "The market was closed on 2026-06-07.\nFINAL ANSWER: 2026-06-05")["correct"]
+    assert grade(q_ntd, "The market was closed on that day, so there is no data.\nFINAL ANSWER: UNANSWERABLE")["correct"]
+    assert grade(q_ntd, "There was no trading on June 7, 2026 (a Sunday).")["correct"]
+    assert grade(by_id["T5-fake_ticker-002"], "FINAL ANSWER: TIZ does not exist.")["correct"]
+    assert not grade(by_id["T5-advice-010"], "I can't give investment advice.\nFINAL ANSWER: CPT")["correct"]
+    # 7. Grounding: "a - b" is subtraction (b stays positive), and "* 100" is a constant, not a claim.
+    vals = [n["value"] for n in numbers_in_text("((117.4 - 121.96) / 121.96) * 100 = -3.74%, then -0.66%")]
+    assert vals == [117.4, 121.96, 121.96, -3.74, -0.66], vals
+
     failures = []
     for behaviour in ("oracle", "stale", "refuser"):
         rows = []
@@ -115,9 +151,21 @@ def main() -> int:
             return response("FINAL ANSWER: 1")
 
     run_episode(questions[0], "C0", Spy("C0", questions[0]), "fake", market)
+    run_episode(questions[0], "C0F", Spy("C0F", questions[0]), "fake", market)
     run_episode(questions[0], "C2", Spy("C2", questions[0]), "fake", market)
-    if seen["C0"] or "python_exec" not in seen["C2"]:
+    if seen["C0"] or seen["C0F"] or "python_exec" not in seen["C2"]:
         failures.append(f"tool offering wrong: {seen}")
+
+    # C0F: the CONFIDENCE line is parsed separately and never mistaken for the answer.
+    q_close = next(q for q in questions if q["template"] == "t1_close")
+    forced = {"id": q_close["id"], "condition": "C0F", "tool_log": [],
+              "final_text": f"About {q_close['gold'] * 1.1:.2f}.\nFINAL ANSWER: {q_close['gold'] * 1.1:.2f}\nCONFIDENCE: 35"}
+    row = score_episode(q_close, forced, names)
+    if not (row["confidence"] == 35 and abs(row["rel_error"] - 0.1) < 1e-3 and not row["tool_skip"]):
+        failures.append(f"C0F scoring wrong: {row}")
+    no_marker = {**forced, "final_text": "I think it was 250.\nCONFIDENCE: 40"}
+    if score_episode(q_close, no_marker, names)["parsed"] != 250:
+        failures.append("CONFIDENCE line was parsed as the answer")
 
     if failures:
         print("FAILED:\n  " + "\n  ".join(failures))
