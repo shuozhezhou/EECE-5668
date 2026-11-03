@@ -152,8 +152,9 @@ def main() -> int:
 
     run_episode(questions[0], "C0", Spy("C0", questions[0]), "fake", market)
     run_episode(questions[0], "C0F", Spy("C0F", questions[0]), "fake", market)
+    run_episode(questions[0], "C0E", Spy("C0E", questions[0]), "fake", market)
     run_episode(questions[0], "C2", Spy("C2", questions[0]), "fake", market)
-    if seen["C0"] or seen["C0F"] or "python_exec" not in seen["C2"]:
+    if seen["C0"] or seen["C0F"] or seen["C0E"] or "python_exec" not in seen["C2"]:
         failures.append(f"tool offering wrong: {seen}")
 
     # C0F: the CONFIDENCE line is parsed separately and never mistaken for the answer.

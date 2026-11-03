@@ -25,6 +25,7 @@ from typing import Any
 
 from agent.answers import collect_numbers, grade, is_unexecuted_tool_call, matches, numbers_in_text
 from agent.market import normalize_ticker
+from agent.runner import NO_TOOL_CONDITIONS
 
 DATA_TOOLS = {"get_quote", "get_price_history", "get_company_info"}
 
@@ -113,7 +114,7 @@ def score_episode(question: dict[str, Any], trace: dict[str, Any], names: dict[s
         "n_tool_calls": len(log),
         "n_data_calls": len(data_calls),
         "n_tool_errors": len(log) - len(_successful(log)),
-        "tool_skip": answered and not data_calls and trace.get("condition") not in ("C0", "C0F"),
+        "tool_skip": answered and not data_calls and trace.get("condition") not in NO_TOOL_CONDITIONS,
         "coverage": coverage(question, log),
         # How far off a numeric answer is (C0F: how stale/fabricated the recalled value is).
         "rel_error": (abs(g["parsed"] - float(question["gold"])) / abs(float(question["gold"]))

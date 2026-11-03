@@ -13,7 +13,7 @@ Everything runs against a frozen snapshot, so results are reproducible.
 | `questions/generate.py` | Template-based question generator with programmatic ground truth |
 | `questions/questions_v1.jsonl` | The generated benchmark (200 questions) and `questions_v1.meta.json` |
 | `tests/check_questions.py` | Re-derives every gold answer from the raw tables, independent of `agent/` |
-| `agent/runner.py` | Agent loop for conditions C0 (no tools), C0F (no tools, forced estimate + confidence), C1 (data tools), C2 (+ `python_exec`) |
+| `agent/runner.py` | Agent loop for conditions C0 (no tools), C0F (no tools, estimate unless unanswerable + confidence), C0E (no tools, must always estimate), C1 (data tools), C2 (+ `python_exec`) |
 | `agent/answers.py` | Final-answer parsing, grading, and number extraction for grounding |
 | `eval/metrics.py` | Per-episode metrics: accuracy, abstention, tool skip, data coverage, grounding |
 | `eval/summarize.py` | Scores every trace under a results directory into tables |

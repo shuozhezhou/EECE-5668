@@ -2,7 +2,8 @@
 
 Conditions:
     C0  closed-book: no tools (measures willingness to abstain)
-    C0F closed-book, forced to estimate (measures stale / fabricated recall), with confidence
+    C0F closed-book, asked to estimate unless the question is unanswerable, with confidence
+    C0E closed-book, must always give a concrete estimate (measures stale / fabricated recall)
     C1  data tools: get_quote, get_price_history, get_company_info
     C2  data tools + python_exec
 
@@ -20,8 +21,8 @@ from typing import Any
 from .market import SnapshotMarket
 from .tools import ToolBox
 
-CONDITIONS = ("C0", "C0F", "C1", "C2")
-NO_TOOL_CONDITIONS = ("C0", "C0F")
+CONDITIONS = ("C0", "C0F", "C0E", "C1", "C2")
+NO_TOOL_CONDITIONS = ("C0", "C0F", "C0E")
 
 ANSWER_FORMAT = (
     "End your reply with one final line in exactly this form:\n"
@@ -47,6 +48,21 @@ RULES_FORCED = (
 )
 CONFIDENCE_FORMAT = "After the FINAL ANSWER line, add one more line: CONFIDENCE: <0-100>"
 
+# C0E ("estimate"): Qwen2.5-7B still abstained on 199/200 C0F questions, so C0E removes the
+# UNANSWERABLE option altogether. Only T1-T3 are meaningful here; T5 is wrong by construction.
+RULES_ESTIMATE = (
+    "Answer from your own knowledge. You must always give a concrete best guess (a number, a "
+    "ticker or a date), even if you are unsure or the date is after your training data. "
+    "Never answer UNANSWERABLE."
+)
+ANSWER_FORMAT_ESTIMATE = (
+    "End your reply with one final line in exactly this form:\n"
+    "FINAL ANSWER: <answer>\n"
+    "where <answer> is one of: a single number (no units, no thousands separators; "
+    "percentages as a number of percent, e.g. -3.12; large values written out in full), "
+    "a ticker symbol, or a date in YYYY-MM-DD format."
+)
+
 
 def system_prompt(condition: str, as_of_text: str) -> str:
     head = f"You are a financial data assistant. The current date and time is {as_of_text}."
@@ -55,6 +71,8 @@ def system_prompt(condition: str, as_of_text: str) -> str:
         tools = no_tools
     elif condition == "C0F":
         return "\n\n".join([head, no_tools, RULES_FORCED, ANSWER_FORMAT, CONFIDENCE_FORMAT])
+    elif condition == "C0E":
+        return "\n\n".join([head, no_tools, RULES_ESTIMATE, ANSWER_FORMAT_ESTIMATE, CONFIDENCE_FORMAT])
     else:
         tools = (
             "You have tools that return market data for S&P 500 companies. Use them to look up "

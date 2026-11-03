@@ -5,6 +5,7 @@ code/data/collect_log*.txt
 
 # Course documents (contain team contact details)
 proposal/
+midterm/
 *.pdf
 
 # Upload bundles and scratch files
