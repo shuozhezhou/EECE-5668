@@ -83,7 +83,8 @@ log_path = DRIVE / 'logs' / f"vllm_{MODEL.split('/')[-1]}.log"
 server = subprocess.Popen(
     ['vllm', 'serve', MODEL, '--enable-auto-tool-choice', '--tool-call-parser', TOOL_PARSER,
      '--max-model-len', str(MAX_LEN), '--gpu-memory-utilization', '0.90', '--port', '8000'],
-    stdout=open(log_path, 'w'), stderr=subprocess.STDOUT)
+    stdout=open(log_path, 'w'), stderr=subprocess.STDOUT,
+    start_new_session=True)  # otherwise interrupting any later cell also kills the server
 for i in range(180):
     try:
         if requests.get('http://localhost:8000/v1/models', timeout=2).ok:
@@ -94,6 +95,7 @@ for i in range(180):
         print('server exited; see log:'); print(open(log_path).read()[-3000:]); break
     time.sleep(5)"""),
     ("code", """# 6. Smoke test: 5 questions under C1, then show one trace
+assert requests.get('http://localhost:8000/v1/models', timeout=5).ok, 'vLLM server is not up; re-run cell 5'
 !python run_experiment.py --model {MODEL} --conditions C1 --limit 5 --out-dir /content/smoke --workers 5
 import json
 tag = MODEL.split('/')[-1]
@@ -102,6 +104,7 @@ print(trace['status'], '| tool calls:', trace['n_tool_calls'])
 for m in trace['messages'][1:]:
     print(f"--- {m['role']}:", (m.get('content') or '')[:400], m.get('tool_calls', ''))"""),
     ("code", """# 7. Full run (resumable). 200 questions per condition.
+assert requests.get('http://localhost:8000/v1/models', timeout=5).ok, 'vLLM server is not up; re-run cell 5'
 !python run_experiment.py --model {MODEL} --conditions C0 C1 C2 --out-dir {RESULTS} --workers 16"""),
     ("code", """# 8. Score everything under results/ (all models run so far)
 !python -m eval.summarize --results {RESULTS}"""),
