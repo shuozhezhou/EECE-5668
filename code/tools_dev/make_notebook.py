@@ -40,6 +40,7 @@ for p in [DRIVE / 'data' / 'snapshots', RESULTS, DRIVE / 'logs']:
 print(sorted(os.listdir(DRIVE)))"""),
     ("code", """# 2. Latest code from GitHub
 import shutil
+os.chdir('/content')  # never stand inside the directory we may delete
 if REPO.exists() and not (REPO / '.git').exists():
     shutil.rmtree(REPO)  # left over from running cell 3 first; clone fresh
 if (REPO / '.git').exists():
